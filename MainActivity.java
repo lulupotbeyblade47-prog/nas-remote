@@ -1,11 +1,12 @@
 package com.nasremote;
-
 import android.app.AlertDialog;
 import android.content.SharedPreferences;
+import android.hardware.ConsumerIrManager;
 import android.os.Bundle;
 import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -13,11 +14,29 @@ import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import androidx.appcompat.app.AppCompatActivity;
-
 public class MainActivity extends AppCompatActivity {
     private WebView webView;
     private SharedPreferences prefs;
     private String baseUrl;
+    private ConsumerIrManager irManager;
+
+    public class IrBridge {
+        @JavascriptInterface
+        public boolean irAvailable() {
+            return irManager != null && irManager.hasIrEmitter();
+        }
+        @JavascriptInterface
+        public boolean irSend(int frequency, String patternCsv) {
+            if (irManager == null || !irManager.hasIrEmitter()) return false;
+            try {
+                String[] parts = patternCsv.split(",");
+                int[] pattern = new int[parts.length];
+                for (int i = 0; i < parts.length; i++) pattern[i] = Integer.parseInt(parts[i].trim());
+                irManager.transmit(frequency, pattern);
+                return true;
+            } catch (Exception e) { return false; }
+        }
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -25,26 +44,25 @@ public class MainActivity extends AppCompatActivity {
         prefs = getSharedPreferences("nasremote", MODE_PRIVATE);
         baseUrl = prefs.getString("url", "http://192.168.68.53:7070");
         setContentView(R.layout.activity_main);
+        irManager = (ConsumerIrManager) getSystemService(CONSUMER_IR_SERVICE);
         webView = findViewById(R.id.webview);
         WebSettings s = webView.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
+        webView.addJavascriptInterface(new IrBridge(), "AndroidIR");
         webView.setWebViewClient(new WebViewClient());
         webView.loadUrl(baseUrl);
     }
-
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         menu.add(0, 1, 0, "Changer IP");
         return true;
     }
-
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         if (item.getItemId() == 1) { showIpDialog(); return true; }
         return super.onOptionsItemSelected(item);
     }
-
     private void showIpDialog() {
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
@@ -68,7 +86,6 @@ public class MainActivity extends AppCompatActivity {
             .setNegativeButton("Annuler", null)
             .show();
     }
-
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         String key = null;
@@ -86,7 +103,6 @@ public class MainActivity extends AppCompatActivity {
         }
         return super.onKeyDown(keyCode, event);
     }
-
     @Override
     public void onBackPressed() {
         if (webView.canGoBack()) webView.goBack();
